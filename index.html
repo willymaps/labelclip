@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Label clip</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<link rel="stylesheet" type="text/css" href="./css/mapstyle.css" />
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js"></script>
+<script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.3.0/mapbox-gl-draw.js'></script>
+<link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.3.0/mapbox-gl-draw.css' type='text/css' />
+<script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+<style type="text/css">
+
+body {
+    font-family: sans-serif;
+}
+
+</style>
+</head>
+<body>
+<div id="mapWrap">
+    <div class="column left">
+        <h2>Dynamic label clipping</h2>
+        <p>A noticable difference between print and web maps is the placement of labels that avoid overlap with map edges. By using a hidden symbol layer, Mapbox can dynamically hide labels close to a defined map edge.</p>
+        <div id="clipLabels" class="active">Show clipped labels</div>
+    </div>
+    <div class="column right">
+        <div id="mapBtn">Draw mask</div>
+        <div id="map"></div>
+    </div>
+</div>
+<div class="credit">
+    <p>Code: <a href="https://github.com/willymaps/labelclip" target="_blank">Github</a></p>
+</div>
+
+<script>
+document.getElementById("clipLabels").addEventListener("click", updateClip);
+document.getElementById("mapBtn").addEventListener("click", (e) => {
+  e.preventDefault();
+  e.target.style.opacity = 0;
+  e.target.style.pointerEvents = 'none';
+  document.getElementById("mapBtn").style.opacity = 0;
+  document.getElementById("clipLabels").style.pointerEvents = 'inherit';
+  document.getElementById("clipLabels").style.opacity = 1;
+  draw.changeMode('draw_polygon');
+});
+
+let initLoad = true;
+
+// please use your own token!
+// mapboxgl.accessToken = 'pk.eyJ1Ijoid2lsbGlhbS1kYXZpcyIsImEiOiJja2tiYWtvbWcwMmtzMnBvajh3M2kxZGRuIn0.GeROaHKn2Gbvsg1e8buJEw';
+mapboxgl.accessToken = 'pk.eyJ1Ijoid2lsbGlhbS1kYXZpcyIsImEiOiJja2prYmpvMncwM21pMnJtbjg0NnBjbWduIn0.9n0cpRnRO06AI7oydrZjbw';
+
+const map = new mapboxgl.Map({
+	container: 'map',
+	style: 'mapbox://styles/mapbox/streets-v11',
+	center: [-73.98, 40.72],
+	zoom: 12.5
+});
+
+const draw = new MapboxDraw({
+  displayControlsDefault: false,
+  controls: {
+    polygon: true
+  }
+});
+
+map.on('load', () => {
+
+  let drawCoords;
+
+  map.addControl(draw, 'top-right');
+
+  map.on('draw.create', function (e) {
+    drawCoords = e.features[0];
+    updateMask(drawCoords);
+  });
+
+  map.on('draw.update', function (e) {
+    drawCoords = e.features[0];
+    updateMask(drawCoords);
+  });
+
+});
+
+function updateMask(coords) {
+
+  const pointFeature = turf.featureCollection([]);
+  const mask = turf.mask(coords);
+  const options = {units: 'miles'};
+  const line = turf.polygonToLine(coords);
+  const length = turf.length(line, options);
+  const points = 1000;
+  const pointDistance = length/points; 
+
+  for (let i = 1; i <= points; i++) {
+    const currentPointDistance = pointDistance*i;
+    const along = turf.along(line, currentPointDistance, options);
+    pointFeature.features.push(along);
+  }
+
+  if (initLoad) {
+    initLoad = false;
+    initMaskLayer(mask, pointFeature);
+  } else {
+    map.getSource('mask-source').setData(mask);
+    map.getSource('points-source').setData(pointFeature);
+  }
+}
+
+function initMaskLayer(mask, points) {
+  map.addSource('mask-source', {
+    'type': 'geojson',
+    'data': mask
+  });
+
+  map.addSource('points-source', {
+    'type': 'geojson',
+    'data': points
+  });
+
+  map.addLayer({
+    'id': 'mask-fill',
+    'type': 'fill',
+    'source': 'mask-source', // reference the data source
+    'layout': {},
+    'paint': {
+        'fill-color': '#fff', // blue color fill
+        'fill-opacity': 1
+    }
+  });
+
+  map.addLayer({
+    'id': 'mask-outline',
+    'type': 'line',
+    'source': 'mask-source',
+    'layout': {},
+    'paint': {
+        'line-color': '#333',
+        'line-width': 1
+    }
+  });
+
+
+  map.addLayer({
+    'id': 'points-layer',
+    'type': 'symbol',
+    'source': 'points-source',
+    'layout': {
+      'text-field': '•',
+      'text-size': 10
+      // 'visibility': 'visible'
+    },
+    'paint': {
+      'text-opacity': 0
+    }
+  });
+};
+
+// btn function
+function updateClip() {
+    if (this.classList.contains('active')) {
+      document.getElementById('clipLabels').innerHTML = "Hide clipped labels";
+      map.setLayoutProperty('points-layer', 'visibility', 'none');
+      this.classList.remove('active');
+    } else {
+      document.getElementById('clipLabels').innerHTML = "Show all labels";
+      map.setLayoutProperty('points-layer', 'visibility', 'visible');
+      this.classList.add('active');
+    }
+}
+
+</script>
+</body>
+</html>
